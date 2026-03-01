@@ -6,6 +6,19 @@ Production-ready voice AI for 100 concurrent PSTN calls with **<600ms round-trip
 
 ---
 
+## 🎬 Demo Video
+
+▶️ [Watch the full demo here](https://drive.google.com/file/d/1ivEAUy0SuoRnkmhE-g5EH2LAfPGYm9F9/view?usp=sharing)
+
+The demo covers:
+- System health check
+- Agent answering different customer questions (knowledge base)
+- 100 concurrent calls with live Grafana dashboard
+- Latency measurement — 173ms avg E2E (target <600ms)
+- Barge-in interruption test — 0.2ms reaction time
+
+---
+
 ## Architecture at a Glance
 
 ```
@@ -350,7 +363,6 @@ To add entries: edit `ai-worker/src/kb/knowledge_base.py` → `KNOWLEDGE_BASE` l
 ---
 
 ## Author
-Dhanpat Singh Meena
+
+**Dhanpat Singh Meena**
 📧 Email: dhanpat.dm001@gmail.com
-
-
