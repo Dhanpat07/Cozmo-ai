@@ -1,0 +1,11 @@
+global:
+  scrape_interval: 5s
+
+scrape_configs:
+  - job_name: 'ai-worker'
+    static_configs:
+      - targets: ['voice-ai-agent-ai-worker-1:8080', 'voice-ai-agent-ai-worker-2:8080']
+
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']

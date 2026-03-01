@@ -1,0 +1,137 @@
+version: '3.9'
+
+# ============================================================
+# Voice AI Agent System - Docker Compose
+# ============================================================
+# Services:
+#   - livekit       : WebRTC SFU (SIP → WebRTC)
+#   - redis         : LiveKit cluster state
+#   - ai-worker     : AI pipeline workers (scalable)
+#   - prometheus    : Metrics collection
+#   - grafana       : Metrics dashboard
+# ============================================================
+
+networks:
+  voice-ai:
+    driver: bridge
+
+volumes:
+  redis-data:
+  prometheus-data:
+  grafana-data:
+
+services:
+
+  # ── Redis (LiveKit cluster backing) ──────────────────────────
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    networks: [voice-ai]
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # ── LiveKit Server ───────────────────────────────────────────
+  livekit:
+    image: livekit/livekit-server:latest
+    restart: unless-stopped
+    networks: [voice-ai]
+    ports:
+      - "7883:7880"    # WebSocket API
+      - "7884:7881"    # TCP for WebRTC
+      - "7885:7882/udp" # UDP for WebRTC
+      - "5061:5060/udp" # SIP UDP
+      - "5061:5060"    # SIP TCP
+    volumes:
+      - ./livekit-config/livekit.yaml:/etc/livekit.yaml:ro
+    command: --config /etc/livekit.yaml
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:7880/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── AI Worker (scale to 15 replicas for 100 calls) ───────────
+  ai-worker:
+    build:
+      context: ./ai-worker
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    networks: [voice-ai]
+    deploy:
+      replicas: 2          # Scale to 15 for 100 concurrent calls
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      - ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY}
+      - CARTESIA_API_KEY=${CARTESIA_API_KEY}
+      - LIVEKIT_URL=ws://livekit:7880
+      - LIVEKIT_API_KEY=devkey
+      - LIVEKIT_API_SECRET=devsecret
+      - REDIS_URL=redis://redis:6379
+      - MAX_CALLS_PER_WORKER=8
+      - LLM_MODEL=gpt-4o-mini
+      - TTS_VOICE=alloy
+      - PORT=8080
+    ports:
+      - "8080-8094:8080"   # Health/metrics endpoints for up to 15 replicas
+    depends_on:
+      livekit:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  # ── Prometheus ───────────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:latest
+    restart: unless-stopped
+    networks: [voice-ai]
+    ports:
+      - "9091:9090"
+    volumes:
+      - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+      - '--storage.tsdb.retention.time=7d'
+
+  # ── Grafana ──────────────────────────────────────────────────
+  grafana:
+    image: grafana/grafana:latest
+    restart: unless-stopped
+    networks: [voice-ai]
+    ports:
+      - "3001:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./infra/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./infra/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    depends_on:
+      - prometheus

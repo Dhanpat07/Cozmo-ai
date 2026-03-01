@@ -1,0 +1,68 @@
+{
+  "title": "Voice AI Agent",
+  "panels": [
+    {
+      "title": "Active Calls",
+      "type": "stat",
+      "gridPos": {"x":0,"y":0,"w":6,"h":4},
+      "targets": [{"expr": "voice_ai_active_calls", "legendFormat": "Active Calls"}],
+      "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "thresholds": {"steps": [{"color": "green","value": 0},{"color": "yellow","value": 6},{"color": "red","value": 8}]}}}
+    },
+    {
+      "title": "Avg E2E Latency (ms)",
+      "type": "stat",
+      "gridPos": {"x":6,"y":0,"w":6,"h":4},
+      "targets": [{"expr": "sum(voice_ai_end_to_end_latency_ms_sum) / sum(voice_ai_end_to_end_latency_ms_count)", "legendFormat": "Avg E2E ms"}],
+      "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "unit": "ms", "thresholds": {"steps": [{"color": "green","value": 0},{"color": "yellow","value": 500},{"color": "red","value": 600}]}}}
+    },
+    {
+      "title": "Avg LLM First Token (ms)",
+      "type": "stat",
+      "gridPos": {"x":12,"y":0,"w":6,"h":4},
+      "targets": [{"expr": "sum(voice_ai_llm_first_token_latency_ms_sum) / sum(voice_ai_llm_first_token_latency_ms_count)", "legendFormat": "LLM ms"}],
+      "fieldConfig": {"defaults": {"unit": "ms", "color": {"mode": "thresholds"}, "thresholds": {"steps": [{"color": "green","value": 0},{"color": "yellow","value": 150},{"color": "red","value": 300}]}}}
+    },
+    {
+      "title": "Avg TTS Start (ms)",
+      "type": "stat",
+      "gridPos": {"x":18,"y":0,"w":6,"h":4},
+      "targets": [{"expr": "sum(voice_ai_tts_start_latency_ms_sum) / sum(voice_ai_tts_start_latency_ms_count)", "legendFormat": "TTS ms"}],
+      "fieldConfig": {"defaults": {"unit": "ms", "color": {"mode": "thresholds"}, "thresholds": {"steps": [{"color": "green","value": 0},{"color": "yellow","value": 400},{"color": "red","value": 600}]}}}
+    },
+    {
+      "title": "E2E Latency Over Time",
+      "type": "timeseries",
+      "gridPos": {"x":0,"y":4,"w":24,"h":8},
+      "targets": [
+        {"expr": "sum(rate(voice_ai_end_to_end_latency_ms_sum[2m])) / sum(rate(voice_ai_end_to_end_latency_ms_count[2m]))", "legendFormat": "Avg E2E"},
+        {"expr": "histogram_quantile(0.95, sum(rate(voice_ai_end_to_end_latency_ms_bucket[2m])) by (le))", "legendFormat": "P95 E2E"}
+      ],
+      "fieldConfig": {"defaults": {"unit": "ms"}},
+      "options": {"tooltip": {"mode": "multi"}}
+    },
+    {
+      "title": "Failed Call Setups",
+      "type": "stat",
+      "gridPos": {"x":0,"y":12,"w":8,"h":4},
+      "targets": [{"expr": "sum(voice_ai_failed_call_setups_total) or vector(0)", "legendFormat": "Failed"}],
+      "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "thresholds": {"steps": [{"color": "green","value": 0},{"color": "red","value": 1}]}}}
+    },
+    {
+      "title": "Barge-In Events",
+      "type": "stat",
+      "gridPos": {"x":8,"y":12,"w":8,"h":4},
+      "targets": [{"expr": "sum(voice_ai_barge_in_total) or vector(0)", "legendFormat": "Barge-ins"}],
+      "fieldConfig": {"defaults": {"color": {"mode": "fixed", "fixedColor": "blue"}}}
+    },
+    {
+      "title": "Total Calls Processed",
+      "type": "stat",
+      "gridPos": {"x":16,"y":12,"w":8,"h":4},
+      "targets": [{"expr": "sum(voice_ai_end_to_end_latency_ms_count)", "legendFormat": "Total Calls"}],
+      "fieldConfig": {"defaults": {"color": {"mode": "fixed", "fixedColor": "green"}}}
+    }
+  ],
+  "refresh": "5s",
+  "time": {"from": "now-15m", "to": "now"},
+  "schemaVersion": 38
+}
