@@ -6,155 +6,150 @@
 
 ```mermaid
 graph TB
-    subgraph PSTN["📞 PSTN / Telephony Layer"]
+    subgraph PSTN["PSTN / Telephony Layer"]
         CALLER[Caller Phone]
-        TWILIO[Twilio Elastic SIP Trunk\nDID → SIP/TLS+SRTP]
+        TWILIO[Twilio SIP Trunk]
     end
 
-    subgraph MEDIA["🎙 Real-Time Media Layer"]
-        LK[LiveKit Server\nSIP→WebRTC SFU\nCluster Mode]
+    subgraph MEDIA["Real-Time Media Layer"]
+        LK[LiveKit Server\nSIP to WebRTC SFU]
         REDIS[(Redis\nCluster State)]
-        LK  REDIS
+        LK --> REDIS
+        REDIS --> LK
     end
 
-    subgraph WORKERS["🤖 AI Worker Pool (Stateless, Scalable)"]
-        direction TB
+    subgraph WORKERS["AI Worker Pool - Stateless, Scalable"]
+        LB[Load Balancer]
         W1[AI Worker 1\n8 calls max]
         W2[AI Worker 2\n8 calls max]
         WN[AI Worker N\n8 calls max]
-        LB[Load Balancer\nReadiness-based]
-        LB --> W1 & W2 & WN
+        LB --> W1
+        LB --> W2
+        LB --> WN
     end
 
-    subgraph PIPELINE["⚙️ Per-Call Pipeline"]
-        direction LR
-        VAD[VAD\nSilero\n20ms frames] --> STT[STT\nGroq Whisper\nLarge v3 Turbo\n~110ms]
-        STT --> KB[KB Search\nFAISS\ntop-3]
-        KB --> LLM[LLM\nGroq llama-3.1-8b\nStreaming\n~128ms]
-        LLM --> TTS[TTS\nCartesia Sonic-Turbo\nStreaming PCM\n~166ms]
-        TTS --> BI{Barge-In\nMonitor\n<0.5ms reaction}
-        BI -->|interrupt| VAD
+    subgraph PIPELINE["Per-Call AI Pipeline"]
+        VAD[VAD Silero\n20ms frames]
+        STT[STT Groq Whisper\n110ms avg]
+        KB[FAISS KB Search\ntop-3 results]
+        LLM[LLM Groq llama-3.1-8b\n128ms avg]
+        TTS[TTS Cartesia Sonic-Turbo\n166ms avg]
+        BI[Barge-In Monitor\n0.2ms reaction]
+        VAD --> STT
+        STT --> KB
+        KB --> LLM
+        LLM --> TTS
+        TTS --> BI
+        BI --> VAD
     end
 
-    subgraph OBS["📊 Observability"]
-        PROM[Prometheus\nMetrics]
-        GRAF[Grafana\nDashboard]
+    subgraph OBS["Observability"]
+        PROM[Prometheus]
+        GRAF[Grafana Dashboard]
         PROM --> GRAF
     end
 
-    CALLER |PSTN| TWILIO
-    TWILIO |SIP/TLS| LK
-    LK |WebRTC Audio| WORKERS
-    W1 & W2 & WN --> PIPELINE
+    CALLER --> TWILIO
+    TWILIO --> CALLER
+    TWILIO --> LK
+    LK --> TWILIO
+    LK --> WORKERS
+    WORKERS --> LK
+    W1 --> PIPELINE
+    W2 --> PIPELINE
+    WN --> PIPELINE
     WORKERS --> PROM
-
-    style PSTN fill:#e8f4f8
-    style MEDIA fill:#f0e8f8
-    style WORKERS fill:#e8f8e8
-    style PIPELINE fill:#f8f0e8
-    style OBS fill:#f8e8f0
 ```
 
 ---
 
-## Diagram 2: Call Flow (Media + Control Plane)
+## Diagram 2: Call Flow - Media and Control Plane
 
 ```mermaid
 sequenceDiagram
-    participant C as 📞 Caller
+    participant C as Caller
     participant TW as Twilio SIP
     participant LK as LiveKit SFU
-    participant LB as Load Balancer
     participant W as AI Worker
     participant G as Groq API
     participant CA as Cartesia TTS
 
-    Note over C,CA: Call Setup (Control Plane)
+    Note over C,CA: Call Setup
     C->>TW: PSTN Call
-    TW->>LK: SIP INVITE (TLS)
-    LK->>LB: Room join event
-    LB->>W: Assign call (if capacity available)
+    TW->>LK: SIP INVITE TLS
+    LK->>W: Assign call
     W-->>LK: Join room as AI participant
-    W-->>C: "Hello! How can I help?"
+    W-->>C: Hello, how can I help?
 
-    Note over C,CA: Active Conversation (Media Plane)
-    loop Every 20ms
-        C->>LK: PCM Audio Frame (RTP/SRTP)
-        LK->>W: WebRTC Audio Track
-        W->>W: VAD: Silero speech detection
-    end
-
-    Note over C,CA: User Utterance Detected
-    C->>LK: Speech (200-300ms buffered)
-    LK->>W: Audio chunk
-    W->>G: Groq Whisper Large v3 Turbo (~110ms)
+    Note over C,CA: User Speaks
+    C->>LK: PCM Audio RTP
+    LK->>W: WebRTC Audio Track
+    W->>W: VAD detects speech end
+    W->>G: Whisper STT - 110ms avg
     G-->>W: Transcript
-    W->>W: FAISS KB search (top-3 results)
-    W->>G: llama-3.1-8b-instant streaming
-    G-->>W: Token stream (first token: ~128ms)
-    W->>CA: Cartesia Sonic-Turbo streaming
-    CA-->>W: PCM audio stream (first chunk: ~166ms)
+    W->>W: FAISS KB search
+    W->>G: llama-3.1-8b streaming
+    G-->>W: First token at 128ms
+    W->>CA: Cartesia Sonic-Turbo
+    CA-->>W: First audio chunk at 166ms
     W->>LK: Audio frames
     LK->>C: Voice response
-    Note over W: Total E2E: ~173ms avg ✅
+    Note over W: Total E2E 173ms avg
 
-    Note over C,CA: Barge-In Scenario
+    Note over C,CA: Barge-In
     C->>LK: Speech while TTS playing
     LK->>W: Audio frame
     W->>W: VAD detects speech
-    W->>W: INTERRUPT TTS (<0.5ms reaction)
-    W->>W: Cancel LLM stream, flush buffer
-    W->>G: New Whisper STT request
+    W->>W: INTERRUPT TTS in 0.2ms
+    W->>W: Cancel LLM stream
+    W->>G: New STT request
 
     Note over C,CA: Call End
     C->>TW: Hang up
     TW->>LK: BYE
     LK->>W: Participant disconnected
-    W->>W: Cleanup session, emit metrics
+    W->>W: Cleanup and emit metrics
 ```
 
 ---
 
-## Diagram 3: Scaling Plan (1 → 100 → 1000 calls)
+## Diagram 3: Scaling Plan
 
 ```mermaid
 graph LR
-    subgraph TIER1["Tier 1: 1–8 calls\n(Single Node, Dev)"]
-        S1[1 AI Worker\n+ 1 LiveKit\n+ Redis]
-        S1N[docker compose up]
+    subgraph TIER1["Tier 1 - 1 to 8 calls - Dev"]
+        S1[1 AI Worker\n1 LiveKit\n1 Redis]
     end
 
-    subgraph TIER2["Tier 2: 8–100 calls\n(Docker Compose Scale)"]
-        S2A[15 AI Workers\n×8 calls = 120 capacity]
-        S2B[1 LiveKit Node]
-        S2C[1 Redis Node]
-        S2N[docker compose up\n--scale ai-worker=15]
+    subgraph TIER2["Tier 2 - 8 to 100 calls - Docker Scale"]
+        S2[15 AI Workers\n120 call capacity\n1 LiveKit Node]
     end
 
-    subgraph TIER3["Tier 3: 100–1000 calls\n(Kubernetes + HPA)"]
-        S3A[HPA: 15–130 Workers\nauto-scaled on CPU/calls]
-        S3B[LiveKit Cluster\n3+ nodes]
-        S3C[Redis Cluster\n3+ nodes]
-        S3D[Global Load Balancer\nMulti-region]
-        S3N[kubectl apply -f k8s/]
+    subgraph TIER3["Tier 3 - 100 to 1000 calls - Kubernetes"]
+        S3A[HPA 15 to 130 Workers]
+        S3B[LiveKit Cluster 3 nodes]
+        S3C[Redis Cluster 3 nodes]
+        S3D[Global Load Balancer]
     end
 
     TIER1 -->|scale workers| TIER2
-    TIER2 -->|add k8s + HPA| TIER3
+    TIER2 -->|add Kubernetes and HPA| TIER3
 
     style TIER1 fill:#e8f4e8
     style TIER2 fill:#f4f0e8
     style TIER3 fill:#f4e8e8
 ```
 
-### Scaling Numbers
+---
+
+## Scaling Numbers
 
 | Tier | Workers | Calls/Worker | Total Capacity | Infrastructure |
 |------|---------|--------------|----------------|----------------|
 | Dev | 1 | 8 | 8 | Docker Compose |
 | Staging | 2 | 8 | 16 | Docker Compose |
-| Production (100) | 15 | 8 | 120 | Docker Compose / K8s |
-| Production (1000) | 130 | 8 | 1040 | Kubernetes + HPA |
+| Production 100 calls | 15 | 8 | 120 | Docker Compose or K8s |
+| Production 1000 calls | 130 | 8 | 1040 | Kubernetes + HPA |
 
 ---
 
@@ -162,9 +157,9 @@ graph LR
 
 | Stage | Target | Measured avg | Implementation |
 |-------|--------|-------------|----------------|
-| VAD / Audio buffer | 200ms | ~200ms | Silero VAD, 250ms silence threshold |
-| STT | 150ms | **110ms** | Groq Whisper Large v3 Turbo (LPU) |
-| LLM first token | 150ms | **128ms** | Groq llama-3.1-8b-instant streaming |
-| TTS first chunk | 150ms | **166ms** | Cartesia Sonic-Turbo streaming |
-| Network overhead | 50ms | ~50ms | Docker bridge network |
-| **Total E2E** | **<600ms** | **173ms** | **3.5× under target** ✅ |
+| VAD / Audio buffer | 200ms | 200ms | Silero VAD, 250ms silence threshold |
+| STT | 150ms | 110ms | Groq Whisper Large v3 Turbo |
+| LLM first token | 150ms | 128ms | Groq llama-3.1-8b-instant streaming |
+| TTS first chunk | 150ms | 166ms | Cartesia Sonic-Turbo streaming |
+| Network overhead | 50ms | 50ms | Docker bridge network |
+| Total E2E | 600ms | 173ms | 3.5x under target |
