@@ -1,21 +1,21 @@
 # 🎙 Voice AI Agent System
 
-Production-ready voice AI for 100 concurrent PSTN calls with **<600ms round-trip latency**.
+Production-ready voice AI handling PSTN calls with **<600ms round-trip latency**.
 
-> **Live Demo Results:** 173ms avg E2E · 128ms LLM · 166ms TTS · 0.2ms barge-in · 122 calls · 0 failures
+> **Live Demo Results:** 173ms avg E2E · 128ms LLM · 166ms TTS · 0.2ms barge-in · 100 calls · 0 failures
 
 ---
 
 ## 🎬 Demo Video
 
-▶️ [Watch the full demo here](https://drive.google.com/file/d/1ivEAUy0SuoRnkmhE-g5EH2LAfPGYm9F9/view?usp=sharing)
+▶️ [Watch the full demo on Google Drive](https://drive.google.com/file/d/1ivEAUy0SuoRnkmhE-g5EH2LAfPGYm9F9/view?usp=sharing)
 
 The demo covers:
 - System health check
 - Agent answering different customer questions (knowledge base)
-- 100 concurrent calls with live Grafana dashboard
-- Latency measurement — 173ms avg E2E (target <600ms)
-- Barge-in interruption test — 0.2ms reaction time
+- 100 calls with 10 concurrent, live Grafana dashboard updating in real time
+- Latency measurement — 173ms avg E2E (target <600ms) ✅
+- Barge-in interruption test — 0.2ms reaction time ✅
 
 ---
 
@@ -105,11 +105,10 @@ curl -X POST http://localhost:8080/simulate/pipeline \
 
 # Expected output:
 # {
-#   "call_id": "test-001",
 #   "llm_first_token_ms": 128.4,
 #   "tts_start_ms": 166.2,
 #   "e2e_ms": 173.1,
-#   "response_text": "We offer a 30-day return policy..."
+#   "response": "We offer a 30-day return policy..."
 # }
 
 # Test barge-in interruption
@@ -119,7 +118,6 @@ curl -X POST http://localhost:8080/simulate/barge-in \
 
 # Expected output:
 # {
-#   "call_id": "test-001",
 #   "interrupted": true,
 #   "reaction_ms": 0.2,
 #   "target_ms": 150,
@@ -127,18 +125,15 @@ curl -X POST http://localhost:8080/simulate/barge-in \
 # }
 ```
 
-### 5. Run Load Test (10 Concurrent Calls)
+### 5. Run Load Test
 
 ```bash
-# 10 simultaneous calls
-for i in {1..10}; do
-  curl -s -X POST http://localhost:8080/simulate/pipeline \
-    -H "Content-Type: application/json" \
-    -d "{\"call_id\": \"load-$i\", \"text\": \"Refund policy?\"}" \
-    | python3 -c "import json,sys; d=json.load(sys.stdin); \
-      print(f'Call $i | LLM:{d[\"llm_first_token_ms\"]}ms | TTS:{d[\"tts_start_ms\"]}ms | E2E:{d[\"e2e_ms\"]}ms')" &
-done
-wait
+# 100 calls, 10 concurrent
+python3 scripts/load_test.py --url http://localhost:8080 --calls 100 --concurrency 10
+
+# Scale workers first for higher concurrency
+docker compose up -d --scale ai-worker=15
+python3 scripts/load_test.py --url http://localhost:8080 --calls 100 --concurrency 50
 ```
 
 ---
@@ -205,13 +200,6 @@ keys:
   devkey: devsecret123456789012345678901234
 ```
 
-### Test a Real Call
-
-```bash
-# Dial your Twilio DID from any phone
-# You should hear: "Hello! Welcome to Acme Corp. How can I help you today?"
-```
-
 ---
 
 ## Observability
@@ -242,7 +230,7 @@ sum(voice_ai_end_to_end_latency_ms_sum) / sum(voice_ai_end_to_end_latency_ms_cou
 histogram_quantile(0.95, sum(rate(voice_ai_end_to_end_latency_ms_bucket[2m])) by (le))
 
 # Active calls
-voice_ai_active_calls
+sum(voice_ai_active_calls)
 
 # Failed call setup rate
 rate(voice_ai_failed_call_setups_total[5m])
@@ -267,7 +255,7 @@ sum(voice_ai_end_to_end_latency_ms_count)
 | Prometheus | 9090 | 9091 |
 | Grafana | 3000 | 3001 |
 
-> **Note:** Host ports are offset to avoid conflicts with local services (Redis, Prometheus, Grafana) commonly running on default ports.
+> **Note:** Host ports are offset to avoid conflicts with local services commonly running on default ports.
 
 ---
 
@@ -299,6 +287,10 @@ voice-ai-agent/
 │   │   └── dashboards/voice-ai.json
 │   └── k8s/deployment.yaml      # Kubernetes + HPA manifests
 ├── scripts/load_test.py         # Load tester
+├── docs/
+│   ├── architecture-diagrams.md # System, call flow, scaling diagrams
+│   ├── livekit-vs-pipecat.md    # Trade-off analysis
+│   └── scaling-1000-calls.md   # 1-pager: bottlenecks and fixes
 ├── .env.example
 └── docker-compose.yml
 ```
@@ -316,7 +308,7 @@ voice-ai-agent/
 | Network overhead | 50ms | ~50ms | Same docker network |
 | **Total** | **<600ms** | **173ms avg** | **3.5× under target** |
 
-> **Why Groq + Cartesia?** Both have significantly lower latency from India (and globally) compared to OpenAI APIs due to better global distribution. Groq uses LPU hardware for near-instant inference.
+> **Why Groq + Cartesia?** Both have significantly lower latency from India (and globally) compared to OpenAI APIs. Groq uses LPU hardware for near-instant inference.
 
 ---
 
@@ -332,8 +324,6 @@ Pre-loaded with 12 FAQ entries:
 | Free trial | "Can I try for free?" | 14-day trial, no credit card |
 | Support | "How do I get help?" | 24/7 chat, email, phone hours |
 | Security | "Is my data safe?" | SOC2 Type II, GDPR compliant |
-
-To add entries: edit `ai-worker/src/kb/knowledge_base.py` → `KNOWLEDGE_BASE` list.
 
 ---
 
