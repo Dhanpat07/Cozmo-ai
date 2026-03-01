@@ -351,5 +351,6 @@ To add entries: edit `ai-worker/src/kb/knowledge_base.py` → `KNOWLEDGE_BASE` l
 
 ## Author
 Dhanpat Singh Meena
+📧 Email: dhanpat.dm001@gmail.com
 
 
