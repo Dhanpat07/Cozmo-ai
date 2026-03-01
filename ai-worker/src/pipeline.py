@@ -10,9 +10,9 @@ from typing import Optional, AsyncIterator
 import numpy as np
 
 from .vad.silero_vad import SileroVAD
-from .stt.whisper_stt import WhisperSTT
-from .llm.openai_llm import OpenAILLM
-from .tts.openai_tts import OpenAITTS
+from .stt.groq_stt import GroqSTT
+from .llm.groq_llm import GroqLLM
+from .tts.cartesia_tts import CartesiaTTS
 from .barge_in.barge_in_controller import BargeInController
 from .metrics import (
     end_to_end_latency_hist, stt_latency_hist,
@@ -58,9 +58,9 @@ class CallPipeline:
         self.knowledge_base = knowledge_base
 
         self.vad = SileroVAD(sample_rate=SAMPLE_RATE)
-        self.stt = WhisperSTT(call_id=call_id)
-        self.llm = OpenAILLM(call_id=call_id)
-        self.tts = OpenAITTS(call_id=call_id)
+        self.stt = GroqSTT(call_id=call_id)
+        self.llm = GroqLLM(call_id=call_id)
+        self.tts = CartesiaTTS(call_id=call_id)
         self.barge_in = BargeInController()
         self.state = ConversationState(call_id=call_id)
 
